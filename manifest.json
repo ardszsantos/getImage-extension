@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Image Downloader",
+  "version": "1.0",
+  "description": "Download images in your desired format",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Image Downloader"
+  },
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}
+
