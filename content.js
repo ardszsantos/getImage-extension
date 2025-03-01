@@ -1,5 +1,5 @@
 (function() {
-  // Create a container for our overlay and attach a Shadow DOM for style encapsulation.
+  // Create a container for our overlay UI inside a Shadow DOM to isolate our styles.
   let extContainer = document.createElement('div');
   extContainer.id = "extension-container";
   document.body.appendChild(extContainer);
@@ -19,7 +19,7 @@
   overlay.style.pointerEvents = "none";
   shadow.appendChild(overlay);
 
-  // Inject Bootstrap into the shadow DOM so our UI styles stay intact.
+  // Inject Bootstrap into the shadow DOM so our UI styles remain intact.
   let bootstrapLink = document.createElement('link');
   bootstrapLink.rel = "stylesheet";
   bootstrapLink.href = "https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css";
@@ -49,18 +49,12 @@
   cancelButton.onclick = cancelSelection;
   cardBody.appendChild(cancelButton);
 
-  // Inject CSS for the red highlight into the document head so it applies to page elements.
-  let highlightStyle = document.createElement('style');
-  highlightStyle.innerText = `
-    .image-selector-highlight {
-      outline: 3px solid red !important;
-    }
-  `;
-  document.head.appendChild(highlightStyle);
+  // Global variable for our dynamic highlight overlay.
+  let highlightOverlay = null;
 
   // --- IMAGE DETECTION AND SPIDER FUNCTIONS ---
 
-  // Returns the image element (if any) closest to the click point.
+  // Returns the image element (if any) closest to the given point.
   function getClosestImageElement(x, y) {
     let elements = document.elementsFromPoint(x, y);
     let candidates = [];
@@ -72,7 +66,6 @@
       }
     }
     if (candidates.length > 0) {
-      // Pick the candidate with the smallest distance from its center to the click point.
       let best = null;
       let bestDistance = Infinity;
       for (let el of candidates) {
@@ -108,7 +101,7 @@
     return null;
   }
 
-  // Recursively search through an element's descendants for an image.
+  // Recursively search descendants for an image.
   function searchDescendantsForImage(el) {
     if (!el) return null;
     let imgs = el.getElementsByTagName("img");
@@ -146,35 +139,38 @@
     return null;
   }
 
+  // --- HIGHLIGHT HANDLING VIA MOUSEMOVE ---
+
+  // Update the highlight overlay based on the element at the current mouse position.
+  function updateHighlight(e) {
+    let candidate = getClosestImageElement(e.clientX, e.clientY);
+    if (candidate) {
+      let rect = candidate.getBoundingClientRect();
+      if (!highlightOverlay) {
+        highlightOverlay = document.createElement('div');
+        highlightOverlay.style.position = 'fixed';
+        highlightOverlay.style.border = '3px solid red';
+        highlightOverlay.style.pointerEvents = 'none';
+        highlightOverlay.style.zIndex = '10000000';
+        document.body.appendChild(highlightOverlay);
+      }
+      highlightOverlay.style.top = rect.top + 'px';
+      highlightOverlay.style.left = rect.left + 'px';
+      highlightOverlay.style.width = rect.width + 'px';
+      highlightOverlay.style.height = rect.height + 'px';
+    } else if (highlightOverlay) {
+      highlightOverlay.remove();
+      highlightOverlay = null;
+    }
+  }
+
+  document.addEventListener('mousemove', updateHighlight, true);
+
   // --- EVENT HANDLERS ---
-
-  // Enhanced onMouseOver: highlight elements that are images (either <img> or with background-image).
-  function onMouseOver(e) {
-    let computed = window.getComputedStyle(e.target);
-    if ((e.target.tagName && e.target.tagName.toLowerCase() === "img" && e.target.src) ||
-        (computed.backgroundImage && computed.backgroundImage !== "none")) {
-      e.target.classList.add("image-selector-highlight");
-    }
-  }
-
-  // onMouseOut: remove the red highlight.
-  function onMouseOut(e) {
-    let computed = window.getComputedStyle(e.target);
-    if ((e.target.tagName && e.target.tagName.toLowerCase() === "img" && e.target.src) ||
-        (computed.backgroundImage && computed.backgroundImage !== "none")) {
-      e.target.classList.remove("image-selector-highlight");
-    }
-  }
-
-  // Remove highlights from all elements.
-  function removeHighlights() {
-    document.querySelectorAll('.image-selector-highlight').forEach(el => el.classList.remove("image-selector-highlight"));
-  }
 
   // Remove the document-level event listeners.
   function removeDocListeners() {
-    document.removeEventListener('mouseover', onMouseOver, true);
-    document.removeEventListener('mouseout', onMouseOut, true);
+    document.removeEventListener('mousemove', updateHighlight, true);
     document.removeEventListener('click', onClick, true);
   }
 
@@ -193,16 +189,21 @@
       return;
     }
     removeDocListeners();
-    removeHighlights();
+    removeHighlight();
     // Enable overlay UI interaction.
     overlay.style.pointerEvents = "auto";
     showFormatSelection(imageUrl, candidate);
   }
 
-  // Attach the event listeners for image detection.
-  document.addEventListener('mouseover', onMouseOver, true);
-  document.addEventListener('mouseout', onMouseOut, true);
   document.addEventListener('click', onClick, true);
+
+  // Remove the highlight overlay from the document.
+  function removeHighlight() {
+    if (highlightOverlay) {
+      highlightOverlay.remove();
+      highlightOverlay = null;
+    }
+  }
 
   // --- UI: Format Selection and Download ---
 
@@ -253,7 +254,7 @@
     }
     if (format === "svg") {
       directDownload(url, "download.svg");
-      removeHighlight(targetEl);
+      removeHighlight();
       return;
     }
     fetch(url, { mode: 'cors' })
@@ -275,7 +276,7 @@
           let dataUrl = canvas.toDataURL("image/" + format);
           directDownload(dataUrl, "download." + format);
           URL.revokeObjectURL(objectUrl);
-          removeHighlight(targetEl);
+          removeHighlight();
         }
       })
       .catch(err => {
@@ -283,7 +284,7 @@
         alert("Failed to fetch image. Downloading original file instead.");
         let ext = url.split('.').pop().split(/[?#]/)[0] || 'jpg';
         directDownload(url, "download." + ext);
-        removeHighlight(targetEl);
+        removeHighlight();
       });
   }
 
@@ -295,13 +296,6 @@
     document.body.appendChild(a);
     a.click();
     a.remove();
-  }
-
-  // Remove red highlight from an element.
-  function removeHighlight(el) {
-    if (el && el.classList.contains("image-selector-highlight")) {
-      el.classList.remove("image-selector-highlight");
-    }
   }
 
   // Allow cancelling via the Esc key.
@@ -316,6 +310,7 @@
   function cancelSelection() {
     overlay.remove();
     removeDocListeners();
+    removeHighlight();
   }
 })();
 
